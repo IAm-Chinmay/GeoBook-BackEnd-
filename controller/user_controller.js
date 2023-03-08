@@ -27,7 +27,7 @@ const signUpUser = async (req, res, next) => {
     next(new httpError("Please enter valid data in given fields", 422));
   }
 
-  const { email, password } = req.body;
+  const { username, email, password } = req.body;
   console.log(email);
   let emailExist;
 
@@ -64,16 +64,17 @@ const signUpUser = async (req, res, next) => {
   }
 
   const createUser = new User({
+    username: username,
     email: email,
     password: hashedPassword,
-    // img: req.file.path,
+    img: req.file.path,
   });
 
   try {
     await createUser.save();
   } catch (error) {
-    // return next(new Http_error("User can't be saved !", 500));
-    return console.log(error);
+    return next(new Http_error("User can't be saved !", 500));
+    // return console.log(error);
   }
 
   let token;
