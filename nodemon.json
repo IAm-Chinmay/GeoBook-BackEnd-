@@ -1,8 +1,8 @@
 {
-    "env" : {
-        "DB_USER" : "geobook",
-        "DB_PASSWORD" : "ikY7hLwU3BFgbuKr",
-        "DB_NAME" : "geobook",
-        "SECURE_KEY" : "secure_key"
+    "env": {
+        "DB_USER": "geobook",
+        "DB_PASSWORD": "OtLBWdCFx263Q6It",
+        "DB_NAME": "geobook",
+        "SECURE_KEY": "secure_key"
     }
 }
