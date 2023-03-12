@@ -6,6 +6,7 @@ const schema = mongoose.Schema;
 const userSchema = new schema({
   email: { type: String, required: true, unique: true },
   username: { type: String, required: true },
+  udesc: { type: String, required: true },
   password: { type: String, required: true },
   img: { type: String, required: true },
   places: [{ type: mongoose.Types.ObjectId, required: true, ref: "Place" }],

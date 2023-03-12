@@ -27,8 +27,7 @@ const signUpUser = async (req, res, next) => {
     next(new httpError("Please enter valid data in given fields", 422));
   }
 
-  const { username, email, password } = req.body;
-  console.log(email);
+  const { username, email, password, udesc } = req.body;
   let emailExist;
 
   try {
@@ -55,17 +54,16 @@ const signUpUser = async (req, res, next) => {
   let hashedPassword;
 
   try {
-    // console.log(password);
     hashedPassword = await bcrypt.hash(password, 12);
   } catch (err) {
     const error = new Http_error("Something went wrong", 500);
-    // return next(error);
-    console.log(err);
+    return next(error);
   }
 
   const createUser = new User({
     username: username,
     email: email,
+    udesc: udesc,
     password: hashedPassword,
     img: req.file.path,
   });
@@ -74,7 +72,6 @@ const signUpUser = async (req, res, next) => {
     await createUser.save();
   } catch (error) {
     return next(new Http_error("User can't be saved !", 500));
-    // return console.log(error);
   }
 
   let token;
@@ -134,15 +131,12 @@ const loginUser = async (req, res, next) => {
         userId: isUser.id,
         email: isUser.email,
       },
-      // process.env.SECURE_KEY,,
       "secure_key",
       { expiresIn: "1h" }
     );
   } catch (error) {
     return next(new Http_error("token generation failed", 500));
   }
-
-  // console.log(isUser.id)
 
   res
     .status(200)

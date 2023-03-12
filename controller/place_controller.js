@@ -52,11 +52,10 @@ const createPlace = async (req, res, next) => {
   const errors = validationResult(req);
 
   if (!errors.isEmpty()) {
-    return next(new Http_error("Please enter all feilds", 422));
+    return next(new Http_error("Please enter all fields", 422));
   }
 
   const { title, desc, address, user } = req.body;
-  // const title = req.body.title;
   const createdPlace = new Place({
     title,
     desc,
@@ -75,7 +74,6 @@ const createPlace = async (req, res, next) => {
   if (!checkUser) {
     return next("User does not exist", 404);
   }
-  console.log(checkUser);
 
   try {
     const sess = await mongoose.startSession();
