@@ -55,12 +55,14 @@ const createPlace = async (req, res, next) => {
     return next(new Http_error("Please enter all fields", 422));
   }
 
-  const { title, desc, address, user } = req.body;
+  const { title, desc, lat, long, user } = req.body;
   const createdPlace = new Place({
     title,
     desc,
     img: req.file.path,
     user,
+    lat,
+    long,
   });
 
   let checkUser;
