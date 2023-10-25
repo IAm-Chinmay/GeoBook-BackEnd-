@@ -1,191 +1,277 @@
-const {v4 : uuidv4} = require('uuid');
-const {validationResult} = require("express-validator");
-const mongoose = require('mongoose');
-const fs = require('fs');
+const { v4: uuidv4 } = require("uuid");
+const { validationResult } = require("express-validator");
+const mongoose = require("mongoose");
+const fs = require("fs");
 
-const Http_error = require('../Models/Http-errors');
-const Place = require('../Models/places-schema');
-const User = require('../Models/user-schema');
+const Http_error = require("../Models/Http-errors");
+const Place = require("../Models/places-schema");
+const User = require("../Models/user-schema");
+const Like = require("../Models/like-schema");
 
+const getPlace = async (req, res, next) => {
+  const placeId = req.params.pid;
 
+  let place;
 
+  try {
+    place = await Place.findById(placeId);
+    console.log(place);
+  } catch (err) {
+    const error = new Http_error("Cannot retrieve data", 500);
+    return next(error);
+  }
 
-const getPlace = async (req,res,next)=>{
+  if (!place) {
+    const error = new Http_error("No Place Found", 404);
+    return next(error);
+  }
 
-    const placeId = req.params.pid;
+  res.json({
+    place: place.toObject({ getter: true }),
+  });
+};
 
-    let place;
+const getPlacesByUserId = async (req, res, next) => {
+  const userId = req.params.uid;
+  let getUser;
+  try {
+    getUser = await User.findById(userId).populate("places");
+  } catch (error) {
+    const err = new Http_error("Failed to get Place by user ID", 500);
+    return next(err);
+  }
 
-    try{
-         place = await  Place.findById(placeId);
-    }catch(err){
-        const error = new Http_error("Cannot retrive data",500);
-        return next(error);
-    }
+  if (!getUser || getUser.places.length === 0) {
+    return next(new Http_error("No place found of given user", 404));
+  }
 
-    if(!place){
-        const error =  new Http_error("No Place Found",404);
-        return next(error);
-    }
-
-    res.json(
-        {
-           place : place.toObject({getter : true})
-        }
-    );
-} ;
-
-const getPlacesByUserId = async (req,res,next)=>{
-    const userId = req.params.uid;
-    let getUser;
-    try{
-         getUser = await User.findById(userId).populate('places');
-    }catch(error){
-        const err = new Http_error("Failed to get Place by user ID",500);
-        return next(err);
-    }
-
-    if(!getUser || getUser.places.length === 0){
-       return next(new Http_error("No place found of given user",404))
-    }
-
-    res.json(
-        {
-            places : getUser.places.map(place => place.toObject({getters : true})) 
-        }
-    );
+  res.json({
+    places: getUser.places.map((place) => place.toObject({ getters: true })),
+  });
 };
 
 const createPlace = async (req, res, next) => {
-    const errors = validationResult(req);
+  const errors = validationResult(req);
 
-    if(!errors.isEmpty()){
-        return next( new Http_error("Please enter all feilds",422));
+  if (!errors.isEmpty()) {
+    return next(new Http_error("Please enter all feilds", 422));
+  }
+
+  const { title, desc, address, user, lat, lon } = req.body;
+  const createdPlace = new Place({
+    title,
+    desc,
+    img: req.file.path,
+    address,
+    lat,
+    lon,
+    user,
+  });
+
+  let checkUser;
+
+  try {
+    checkUser = await User.findById(user);
+  } catch (error) {
+    return next(new Http_error("Cannot find User", 500));
+  }
+
+  if (!checkUser) {
+    return next("User does not exist", 404);
+  }
+  console.log(checkUser);
+
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    await createdPlace.save({ session: sess });
+    checkUser.places.push(createdPlace);
+    await checkUser.save({ session: sess });
+    await sess.commitTransaction();
+  } catch (err) {
+    return next(new Http_error("Creating Place Failed", 500));
+  }
+
+  res.status(201).json({ place: createdPlace.toObject({ getters: true }) });
+};
+
+const likePost = async (req, res, next) => {
+  const { postId, userId } = req.body;
+
+  let findPlace;
+
+  try {
+    findPlace = await Place.findById(postId);
+  } catch (error) {
+    return next(new Http_error("Cannot find post.", 500));
+  }
+
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    const like = new Like({ postId, userId });
+    findPlace.like.push(userId);
+    await like.save();
+    await findPlace.save({ session: sess });
+    await sess.commitTransaction();
+  } catch (err) {
+    console.log(err);
+    return next(new Http_error("Like Failed", 500));
+  }
+  res.json({ message: true });
+};
+
+const dislike = async (req, res, next) => {
+  const { postId, userId } = req.body;
+
+  let like, findPlace;
+
+  try {
+    findPlace = await Place.findById(postId);
+  } catch (error) {
+    return next(new Http_error("Cannot find post.", 500));
+  }
+
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    findPlace.like.pop({ userId });
+    like = await Like.findOne({ postId: postId, userId: userId });
+    like.remove();
+    await findPlace.save({ session: sess });
+    await sess.commitTransaction();
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+const getLike = async (req, res, next) => {
+  let getLikes;
+  try {
+    getLikes = await Like.find({}).exec();
+  } catch (err) {
+    return next(new Http_error("Fetching Likes Failed", 500));
+  }
+
+  res.json({
+    likes: getLikes.map((like) => like.toObject({ getters: true })),
+  });
+};
+
+const postLiked = async (req, res, next) => {
+  const { id, userId } = req.body;
+  console.log(id);
+  let postLike;
+  try {
+    for (let i = 0; i < id.length; i++) {
+      postLike = await Like.findOne({ id: id[i], userId: userId });
+      if (!postLike) {
+        res.status(200).json({
+          liked: false,
+        });
+      } else {
+        res.status(200).json({
+          liked: true,
+        });
+      }
     }
+  } catch (err) {
+    console.log(err);
+    err = new Http_error("Failed to get Like By Id", 500);
+    return next(err);
+  }
+};
 
-    
+const countLike = async (req, res, next) => {
+  const { postId } = req.params;
+  try {
+    const count = await Like.countDocuments({ postId });
+    res.json({ count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
-    const {title, desc, address, user } = req.body;
-    // const title = req.body.title;
-    const createdPlace = new Place(
-        {
-            title,
-            desc,
-            img : req.file.path,
-            address,
-            user
-          }
-    ) ;
-  
-    let checkUser;
+const updatePlace = async (req, res, next) => {
+  const errors = validationResult(req);
 
-    try{
-        checkUser = await User.findById(user)
-    }catch(error){
-        return next(new Http_error("Cannot find User",500));
-    }
+  if (!errors.isEmpty()) {
+    throw new Http_error("Please enter all feilds", 422);
+  }
 
-    if(!checkUser){
-        return next("User does not exist" ,404);
-    }
-    console.log(checkUser);
+  const { title, desc } = req.body;
 
-          try{
-            const sess = await mongoose.startSession();
-            sess.startTransaction();
-            await createdPlace.save({session : sess});
-            checkUser.places.push(createdPlace);
-            await checkUser.save({session : sess});
-            await sess.commitTransaction();
-          }catch(err){
-            return next(new Http_error("Creating Place Failed",500));
-          }
+  const placeId = req.params.pid;
+  let updatePlace;
 
-  
-    res.status(201).json({place: createdPlace.toObject({getters : true})});
-  };
+  try {
+    updatePlace = await Place.findById(placeId);
+  } catch (error) {
+    return next(new Http_error("Cannot find place with given ID", 404));
+  }
 
+  if (updatePlace.user.toString() !== req.userData.userId) {
+    return next(new Http_error("Cannot update", 401));
+  }
 
-const updatePlace = async (req,res,next) => {
+  updatePlace.title = title;
+  updatePlace.desc = desc;
 
-    const errors = validationResult(req);
+  try {
+    await updatePlace.save();
+  } catch (error) {
+    return next(new Http_error("Cannot save the place", 500));
+  }
 
-    if(!errors.isEmpty()){
-        throw new Http_error("Please enter all feilds",422);
-    }
+  res
+    .status(200)
+    .json({ updatedPlace: updatePlace.toObject({ getter: true }) });
+};
 
-    const {title , desc} = req.body;
+const deletePlace = async (req, res, next) => {
+  const placeId = req.params.pid;
 
-    const placeId = req.params.pid;
-    let updatePlace;
-     
-    try{
-        updatePlace = await Place.findById(placeId);
-    }catch(error){
-        return next(new Http_error("Cannot find place with given ID",404));
-    }
+  let place;
 
-    if(updatePlace.user.toString() !== req.userData.userId){
-        return next(new Http_error("Cannot update",401));
-    }
+  try {
+    place = await Place.findById(placeId).populate("user");
+  } catch (error) {
+    return next(new Http_error("Cannot find the place to delete", 500));
+  }
 
-    updatePlace.title = title;
-    updatePlace.desc = desc;
+  if (!place) {
+    return next(new Http_error("Place not found", 404));
+  }
 
-   try{
-       await updatePlace.save();
-   }catch(error){
-        return next(new Http_error("Cannot save the place",500));
-   }
+  if (place.user.id !== req.userData.userId) {
+    return next(new Http_error("Cannot Delete", 401));
+  }
 
-    res.status(200).json({updatedPlace : updatePlace.toObject({getter : true})});
-}
+  const ImagePath = place.img;
 
-
-const deletePlace = async(req,res,next) => {
-    const placeId = req.params.pid;
-
-    let place;
-
-    try{
-        place = await Place.findById(placeId).populate('user');
-    }catch(error){
-        return next(new Http_error("Cannot find the place to delete",500));
-    }
-
-    
-
-    if(!place){
-        return next(new Http_error("Place not found",404));
-    }
-
-    if(place.user.id !== req.userData.userId){
-        return next(new Http_error("Cannot Delete",401));
-    } 
-
-
-    const ImagePath = place.img;
-
-    try{
-        const sess = await mongoose.startSession();
-        sess.startTransaction();
-        await place.remove({session : sess});
-        place.user.places.pull(place);
-        await place.user.save({session : sess});
-        await sess.commitTransaction();
-    }catch(error){
-        return next(new Http_error("Cannot Delete place",500));
-    }
-    fs.unlink(ImagePath, err =>{
-        console.log(err);
-    })
-    res.status(200).json({message : "Deleted"});
-}
-
-
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    await place.remove({ session: sess });
+    place.user.places.pull(place);
+    await place.user.save({ session: sess });
+    await sess.commitTransaction();
+  } catch (error) {
+    return next(new Http_error("Cannot Delete place", 500));
+  }
+  fs.unlink(ImagePath, (err) => {
+    console.log(err);
+  });
+  res.status(200).json({ message: "Deleted" });
+};
 
 exports.getPlace = getPlace;
 exports.getPlacesByUserId = getPlacesByUserId;
 exports.createPlace = createPlace;
 exports.updatePlace = updatePlace;
 exports.deletePlace = deletePlace;
+exports.likePost = likePost;
+exports.countLike = countLike;
+exports.postLiked = postLiked;
+exports.getLike = getLike;
+exports.dislike = dislike;
